@@ -148,17 +148,19 @@ class HTTPResponse:
 
 
 class HTTPClient:
+    def __init__(self, recv_bytes: int = 4096, max_redirect_count: int = 5):
+        self.recv_bytes = recv_bytes
+        self.max_redirect_count = max_redirect_count
 
     @staticmethod
     def _get_port(http_request: HTTPRequest) -> int:
         return 80 if http_request.protocol == HTTPProtocols.HTTP else 443
 
-    @staticmethod
-    def _connect_and_send_request(sock_client: socket.socket, http_request: HTTPRequest, port: int):
+    def _connect_and_send_request(self, sock_client: socket.socket, http_request: HTTPRequest, port: int):
         sock_client.connect((http_request.hostname, port))
         sock_client.send(http_request.request.encode())
 
-        response = sock_client.recv(4096)
+        response = sock_client.recv(self.recv_bytes)
         return response.decode()
 
     @staticmethod
@@ -169,31 +171,27 @@ class HTTPClient:
 
         return location
 
-    def _get_response(self, sock_client: socket.socket, http_request: HTTPRequest, port: int):
+    def _get_response(self, sock_client: socket.socket, http_request: HTTPRequest, port: int, redirect_count: int):
 
         response = self._connect_and_send_request(sock_client, http_request, port)
         http_response = HTTPResponse(response)
         location = self._check_if_need_to_redirect(http_response)
         if location:
+            if redirect_count >= self.max_redirect_count:
+                raise Exception("Too many redirects")
+            print(location)
+            print(redirect_count)
             redirect_request = HTTPRequest(location)
-            return self.send_request(redirect_request)
+            return self.send_request(redirect_request, port, redirect_count + 1)
 
         return http_response
 
-    def send_request(self, http_request: HTTPRequest, port: int | None = None) -> HTTPResponse:
+    def send_request(self, http_request: HTTPRequest, port: int | None = None, redirect_count: int = 0) -> HTTPResponse:
         if not port:
             port = self._get_port(http_request)
 
         with socket.socket() as sock_client:
-            http_response = self._get_response(sock_client, http_request, port)
+            http_response = self._get_response(sock_client, http_request, port, redirect_count)
 
             return http_response
-
-
-if __name__ == '__main__':
-    req = HTTPRequest("google.com")
-    res = HTTPClient().send_request(req)
-    print(res.response)
-    print(res.headers)
-    # print(url_parse("http//www.google.com/"))
  
