@@ -5,18 +5,25 @@ import socket
 INDENT = "\r\n"
 
 
-def url_parse(url: str) -> tuple[str, str]:
-    for protocol in ("https://", "http://"):
+class HTTPProtocols:
+    HTTP = "http://"
+    HTTPS = "https://"
+
+
+def url_parse(url: str) -> tuple[str, str, str]:
+    http_protocol = HTTPProtocols.HTTP
+        
+    for protocol in (HTTPProtocols.HTTPS, HTTPProtocols.HTTP):
         if url.startswith(protocol):
             url = url[len(protocol):]
+            http_protocol = protocol
             break
 
     parsed_url = url.split("/")
 
     hostname = parsed_url[0]
     path = "/" + "/".join(parsed_url[1::]) if len(parsed_url) > 1 else "/"
-
-    return hostname, path
+    return hostname, path, http_protocol
 
 
 class HTTPHeaders:
@@ -25,6 +32,12 @@ class HTTPHeaders:
     CONTENT_TYPE = "Content-Type"
     HOST = "Host"
     CONTENT_LENGTH = "Content-Length"
+    LOCATION = "Location"
+
+
+class HTTPStatusCodes:
+    OK = 200
+    MOVED_PERMANENTLY = 301
 
 
 class HTTPVersions:
@@ -60,7 +73,7 @@ class HTTPRequest:
                  body: str | dict | None = None):
 
         self.url = url
-        self.hostname, self.path = url_parse(url)
+        self.hostname, self.path, self.protocol = url_parse(url)
         self.method = method.upper() if method else HTTPMethods.GET
         self.request_headers = request_headers if request_headers else base_request_headers
         self.http_version = http_version.upper()
@@ -130,22 +143,57 @@ class HTTPResponse:
         self.status_code = int(status_code)
 
         for line in response_header_lines[1:]:
-            header, *value = line.split(":")
+            header, *value = line.split(": ")
             self.headers[header] = "".join(value)
 
 
 class HTTPClient:
 
     @staticmethod
-    def _connect_and_send_request(sock_client: socket.socket, host: tuple[str, int], data: str):
-        sock_client.connect(host)
-        sock_client.send(data.encode())
+    def _get_port(http_request: HTTPRequest) -> int:
+        return 80 if http_request.protocol == HTTPProtocols.HTTP else 443
+
+    @staticmethod
+    def _connect_and_send_request(sock_client: socket.socket, http_request: HTTPRequest, port: int):
+        sock_client.connect((http_request.hostname, port))
+        sock_client.send(http_request.request.encode())
 
         response = sock_client.recv(4096)
         return response.decode()
 
-    def send_request(self, http_request: HTTPRequest, port: int = 80) -> HTTPResponse:
+    @staticmethod
+    def _check_if_need_to_redirect(http_response: HTTPResponse):
+        location = None
+        if http_response.status_code == HTTPStatusCodes.MOVED_PERMANENTLY:
+            location = http_response.headers.get(HTTPHeaders.LOCATION)
+
+        return location
+
+    def _get_response(self, sock_client: socket.socket, http_request: HTTPRequest, port: int):
+
+        response = self._connect_and_send_request(sock_client, http_request, port)
+        http_response = HTTPResponse(response)
+        location = self._check_if_need_to_redirect(http_response)
+        if location:
+            redirect_request = HTTPRequest(location)
+            return self.send_request(redirect_request)
+
+        return http_response
+
+    def send_request(self, http_request: HTTPRequest, port: int | None = None) -> HTTPResponse:
+        if not port:
+            port = self._get_port(http_request)
+
         with socket.socket() as sock_client:
-            response = self._connect_and_send_request(sock_client, (http_request.hostname, port), http_request.request)
-            http_response = HTTPResponse(response)
+            http_response = self._get_response(sock_client, http_request, port)
+
             return http_response
+
+
+if __name__ == '__main__':
+    req = HTTPRequest("google.com")
+    res = HTTPClient().send_request(req)
+    print(res.response)
+    print(res.headers)
+    # print(url_parse("http//www.google.com/"))
+ 
