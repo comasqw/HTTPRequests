@@ -75,14 +75,22 @@ class HTTPRequest:
         request_start_line = f"{self.method} {path} {self.http_version}{INDENT}"
         return request_start_line
 
+    def _create_headers_for_content_sending(self):
+        content_headers = ""
+
+        content_type = ContentTypes.TEXT
+        if isinstance(self.body, dict):
+            content_type = ContentTypes.JSON
+
+        content_headers += f"{HTTPHeaders.CONTENT_TYPE}: {content_type}{INDENT}"
+        content_headers += f"{HTTPHeaders.CONTENT_LENGTH}: {len(str(self.body))}{INDENT}"
+
+        return content_headers
+
     def _create_request_headers_str(self) -> str:
         request_headers_str = f"{HTTPHeaders.HOST}: {self.hostname}{INDENT}"
         if self.body and self.method == HTTPMethods.POST:
-            content_type = ContentTypes.TEXT
-            if isinstance(self.body, dict):
-                content_type = ContentTypes.JSON
-            request_headers_str += f"{HTTPHeaders.CONTENT_TYPE}: {content_type}{INDENT}"
-            request_headers_str += f"{HTTPHeaders.CONTENT_LENGTH}: {len(str(self.body))}{INDENT}"
+            request_headers_str += self._create_headers_for_content_sending()
 
         for header, value in self.request_headers.items():
             request_headers_str += f"{header}: {value}{INDENT}"
