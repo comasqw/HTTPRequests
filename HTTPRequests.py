@@ -146,6 +146,9 @@ class HTTPResponse:
             header, *value = line.split(": ")
             self.headers[header] = "".join(value)
 
+    def __bool__(self):
+        return self.status_code == HTTPStatusCodes.OK
+
 
 class HTTPClient:
     def __init__(self, recv_bytes: int = 4096, max_redirect_count: int = 5):
@@ -179,8 +182,6 @@ class HTTPClient:
         if location:
             if redirect_count >= self.max_redirect_count:
                 raise Exception("Too many redirects")
-            print(location)
-            print(redirect_count)
             redirect_request = HTTPRequest(location)
             return self.send_request(redirect_request, port, redirect_count + 1)
 
@@ -194,4 +195,3 @@ class HTTPClient:
             http_response = self._get_response(sock_client, http_request, port, redirect_count)
 
             return http_response
- 
