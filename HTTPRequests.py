@@ -49,11 +49,14 @@ class HTTPVersions:
 class HTTPMethods:
     GET = "GET"
     POST = "POST"
+    PUT = "PUT"
+    DELETE = "DELETE"
 
 
 class ContentTypes:
     JSON = "application/json"
     TEXT = "text/plain"
+    FORM = "application/x-www-form-urlencoded"
 
 
 base_request_headers = {
@@ -63,6 +66,8 @@ base_request_headers = {
 
 
 class HTTPRequest:
+    _body_methods = (HTTPMethods.POST, HTTPMethods.PUT, HTTPMethods.DELETE)
+
     def __init__(self,
                  url: str,
                  *,
@@ -70,7 +75,8 @@ class HTTPRequest:
                  request_headers: dict | None = None,
                  http_version: str = HTTPVersions.HTTP1_1,
                  query_string: dict[str, str] | None = None,
-                 body: str | dict | None = None):
+                 body: str | dict | None = None,
+                 form: dict[str, str] | None = None):
 
         self.url = url
         self.hostname, self.path, self.protocol = url_parse(url)
@@ -79,30 +85,54 @@ class HTTPRequest:
         self.http_version = http_version.upper()
         self.query_string = query_string
         self.body = body
+        self.form = form
+        self._content_type: str | None = None
+        self._content_length: int | None = None
+        self._initialize_form()
+        self._initialize_content_headers()
         self.request = self.create_request_str()
+
+    def _initialize_content_headers(self):
+        if self.method in self._body_methods:
+            # Content-Type init
+            if self.form:
+                content_type = ContentTypes.FORM
+            elif isinstance(self.body, dict):
+                content_type = ContentTypes.JSON
+            else:
+                content_type = ContentTypes.TEXT
+
+            self._content_type = content_type
+
+            # Content-Length init
+            if isinstance(self.body, dict):
+                self._content_length = len(json.dumps(self.body))
+            else:
+                self._content_length = len(str(self.body))
+
+    def _initialize_form(self):
+        if self.form:
+            self.body = self._join_dict(self.form)
+
+    @staticmethod
+    def _join_dict(dct: dict[any, any]):
+        return "&".join([f"{key}={value}" for key, value in dct.items()])
 
     def _create_request_start_line_str(self) -> str:
         path = self.path
         if self.query_string:
-            path += "?" + "&".join([f"{key}={value}" for key, value in self.query_string.items()])
+            path += "?" + self._join_dict(self.query_string)
         request_start_line = f"{self.method} {path} {self.http_version}{INDENT}"
         return request_start_line
 
     def _create_headers_for_content_sending(self):
-        content_headers = ""
-
-        content_type = ContentTypes.TEXT
-        if isinstance(self.body, dict):
-            content_type = ContentTypes.JSON
-
-        content_headers += f"{HTTPHeaders.CONTENT_TYPE}: {content_type}{INDENT}"
-        content_headers += f"{HTTPHeaders.CONTENT_LENGTH}: {len(str(self.body))}{INDENT}"
-
+        content_headers = (f"{HTTPHeaders.CONTENT_TYPE}: {self._content_type}{INDENT}"
+                           f"{HTTPHeaders.CONTENT_LENGTH}: {self._content_length}{INDENT}")
         return content_headers
 
     def _create_request_headers_str(self) -> str:
         request_headers_str = f"{HTTPHeaders.HOST}: {self.hostname}{INDENT}"
-        if self.body and self.method == HTTPMethods.POST:
+        if self.body and self.method in self._body_methods:
             request_headers_str += self._create_headers_for_content_sending()
 
         for header, value in self.request_headers.items():
@@ -114,7 +144,7 @@ class HTTPRequest:
         request_start_line_str = self._create_request_start_line_str()
         request_headers_str = self._create_request_headers_str()
         request_str = request_start_line_str + request_headers_str + INDENT + INDENT
-        if self.body and self.method == HTTPMethods.POST:
+        if self.body and self.method in self._body_methods:
             if isinstance(self.body, dict):
                 body_str = json.dumps(self.body)
             else:
