@@ -233,6 +233,6 @@ class HTTPClient(BaseHTTPClient):
         if not port:
             port = self._get_port(http_request)
 
-        self._redirect_count = 0
         response = self._get_response(http_request, port)
+        self._redirect_count = 0
         return response
