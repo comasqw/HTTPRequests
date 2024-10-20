@@ -180,21 +180,10 @@ class HTTPResponse:
         return self.status_code == HTTPStatusCodes.OK
 
 
-class HTTPClient:
-    def __init__(self, recv_bytes: int = 4096, max_redirect_count: int = 5):
-        self.recv_bytes = recv_bytes
-        self.max_redirect_count = max_redirect_count
-
+class BaseHTTPClient:
     @staticmethod
     def _get_port(http_request: HTTPRequest) -> int:
         return 80 if http_request.protocol == HTTPProtocols.HTTP else 443
-
-    def _connect_and_send_request(self, sock_client: socket.socket, http_request: HTTPRequest, port: int):
-        sock_client.connect((http_request.hostname, port))
-        sock_client.send(http_request.request.encode())
-
-        response = sock_client.recv(self.recv_bytes)
-        return response.decode()
 
     @staticmethod
     def _check_if_need_to_redirect(http_response: HTTPResponse):
@@ -204,24 +193,46 @@ class HTTPClient:
 
         return location
 
-    def _get_response(self, sock_client: socket.socket, http_request: HTTPRequest, port: int, redirect_count: int):
+    def request(self, http_request: HTTPRequest, port: int | None = None) -> HTTPResponse:
+        pass
 
-        response = self._connect_and_send_request(sock_client, http_request, port)
+
+class HTTPClient(BaseHTTPClient):
+    def __init__(self, recv_bytes: int = 4096, max_redirect_count: int = 5):
+        self.recv_bytes = recv_bytes
+        self.max_redirect_count = max_redirect_count
+        self._redirect_count = 0
+
+    def _connect_and_send_request(self, http_request: HTTPRequest, port: int):
+        with socket.socket() as sock_client:
+            sock_client.connect((http_request.hostname, port))
+            sock_client.send(http_request.request.encode())
+
+            response = sock_client.recv(self.recv_bytes)
+            return response.decode()
+
+    def _get_response(self, http_request: HTTPRequest, port: int) -> HTTPResponse:
+        response = self._connect_and_send_request(http_request, port)
         http_response = HTTPResponse(response)
         location = self._check_if_need_to_redirect(http_response)
         if location:
-            if redirect_count >= self.max_redirect_count:
-                raise Exception("Too many redirects")
-            redirect_request = HTTPRequest(location)
-            return self.send_request(redirect_request, port, redirect_count + 1)
+            if self._redirect_count >= self.max_redirect_count:
+                raise Exception("To many redirects")
+
+            redirect_request = HTTPRequest(location,
+                                           request_headers=http_request.request_headers,
+                                           body=http_request.body,
+                                           form=http_request.form,
+                                           query_string=http_request.query_string)
+            self._redirect_count += 1
+            return self.request(redirect_request, port)
 
         return http_response
 
-    def send_request(self, http_request: HTTPRequest, port: int | None = None, redirect_count: int = 0) -> HTTPResponse:
+    def request(self, http_request: HTTPRequest, port: int | None = None) -> HTTPResponse:
         if not port:
             port = self._get_port(http_request)
 
-        with socket.socket() as sock_client:
-            http_response = self._get_response(sock_client, http_request, port, redirect_count)
-
-            return http_response
+        self._redirect_count = 0
+        response = self._get_response(http_request, port)
+        return response
