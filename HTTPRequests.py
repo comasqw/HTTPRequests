@@ -3,6 +3,7 @@ import socket
 import ssl
 
 INDENT = "\r\n"
+DOUBLE_INDENT = INDENT + INDENT
 
 
 class HTTPProtocols:
@@ -147,7 +148,7 @@ class HTTPRequest:
     def create_request_str(self) -> str:
         request_start_line_str = self._create_request_start_line_str()
         request_headers_str = self._create_request_headers_str()
-        request_str = request_start_line_str + request_headers_str + INDENT + INDENT
+        request_str = request_start_line_str + request_headers_str + DOUBLE_INDENT
         if self.body and self.method in self._body_methods:
             if isinstance(self.body, dict):
                 body_str = json.dumps(self.body)
@@ -167,7 +168,13 @@ class HTTPResponse:
         self._parse_response()
 
     def _parse_response(self):
-        response_header, response_body = self.response.split(INDENT + INDENT)
+        splited_response = self.response.split(DOUBLE_INDENT)
+        response_header = splited_response[0]
+
+        response_body = None
+        if len(splited_response) >= 2:
+            response_body = splited_response[1]
+
         self.body = response_body
 
         response_header_lines = response_header.split(INDENT)
