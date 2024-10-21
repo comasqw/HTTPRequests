@@ -10,7 +10,7 @@ class HTTPProtocols:
     HTTPS = "https://"
 
 
-def url_parse(url: str) -> tuple[str, str, str]:
+def url_parse(url: str) -> tuple[str, str, str, str | None]:
     http_protocol = HTTPProtocols.HTTP
         
     for protocol in (HTTPProtocols.HTTPS, HTTPProtocols.HTTP):
@@ -21,9 +21,12 @@ def url_parse(url: str) -> tuple[str, str, str]:
 
     parsed_url = url.split("/")
 
-    hostname = parsed_url[0]
+    hostname_with_port = parsed_url[0].split(":")
+    hostname = hostname_with_port[0]
+    port = hostname_with_port[-1] if len(hostname_with_port) >= 2 else None
+
     path = "/" + "/".join(parsed_url[1::]) if len(parsed_url) > 1 else "/"
-    return hostname, path, http_protocol
+    return hostname, path, http_protocol, port
 
 
 class HTTPHeaders:
@@ -79,7 +82,8 @@ class HTTPRequest:
                  form: dict[str, str] | None = None):
 
         self.url = url
-        self.hostname, self.path, self.protocol = url_parse(url)
+        self.hostname, self.path, self.protocol, self.port = url_parse(url)
+        self._initialize_port()
         self.method = method.upper() if method else HTTPMethods.GET
         self.request_headers = request_headers if request_headers else base_request_headers
         self.http_version = http_version.upper()
@@ -113,6 +117,10 @@ class HTTPRequest:
     def _initialize_form(self):
         if self.form:
             self.body = self._join_dict(self.form)
+
+    def _initialize_port(self):
+        if not self.port:
+            self.port = 80 if self.protocol == HTTPProtocols.HTTP else 443
 
     @staticmethod
     def _join_dict(dct: dict[any, any]):
@@ -182,10 +190,6 @@ class HTTPResponse:
 
 class BaseHTTPClient:
     @staticmethod
-    def _get_port(http_request: HTTPRequest) -> int:
-        return 80 if http_request.protocol == HTTPProtocols.HTTP else 443
-
-    @staticmethod
     def _check_if_need_to_redirect(http_response: HTTPResponse):
         location = None
         if http_response.status_code == HTTPStatusCodes.MOVED_PERMANENTLY:
@@ -193,7 +197,7 @@ class BaseHTTPClient:
 
         return location
 
-    def request(self, http_request: HTTPRequest, port: int | None = None) -> HTTPResponse:
+    def request(self, http_request: HTTPRequest) -> HTTPResponse:
         pass
 
 
@@ -203,16 +207,16 @@ class HTTPClient(BaseHTTPClient):
         self.max_redirect_count = max_redirect_count
         self._redirect_count = 0
 
-    def _connect_and_send_request(self, http_request: HTTPRequest, port: int):
+    def _connect_and_send_request(self, http_request: HTTPRequest):
         with socket.socket() as sock_client:
-            sock_client.connect((http_request.hostname, port))
+            sock_client.connect((http_request.hostname, http_request.port))
             sock_client.send(http_request.request.encode())
 
             response = sock_client.recv(self.recv_bytes)
             return response.decode()
 
-    def _get_response(self, http_request: HTTPRequest, port: int) -> HTTPResponse:
-        response = self._connect_and_send_request(http_request, port)
+    def _get_response(self, http_request: HTTPRequest) -> HTTPResponse:
+        response = self._connect_and_send_request(http_request)
         http_response = HTTPResponse(response)
         location = self._check_if_need_to_redirect(http_response)
         if location:
@@ -225,14 +229,12 @@ class HTTPClient(BaseHTTPClient):
                                            form=http_request.form,
                                            query_string=http_request.query_string)
             self._redirect_count += 1
-            return self.request(redirect_request, port)
+            return self.request(redirect_request)
 
         return http_response
 
-    def request(self, http_request: HTTPRequest, port: int | None = None) -> HTTPResponse:
-        if not port:
-            port = self._get_port(http_request)
+    def request(self, http_request: HTTPRequest) -> HTTPResponse:
 
-        response = self._get_response(http_request, port)
+        response = self._get_response(http_request)
         self._redirect_count = 0
         return response
