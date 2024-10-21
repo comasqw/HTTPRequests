@@ -1,6 +1,6 @@
 import json
 import socket
-
+import ssl
 
 INDENT = "\r\n"
 
@@ -10,7 +10,7 @@ class HTTPProtocols:
     HTTPS = "https://"
 
 
-def url_parse(url: str) -> tuple[str, str, str, str | None]:
+def url_parse(url: str) -> tuple[str, str, str, int | None]:
     http_protocol = HTTPProtocols.HTTP
         
     for protocol in (HTTPProtocols.HTTPS, HTTPProtocols.HTTP):
@@ -121,6 +121,8 @@ class HTTPRequest:
     def _initialize_port(self):
         if not self.port:
             self.port = 80 if self.protocol == HTTPProtocols.HTTP else 443
+        else:
+            self.port  = int(self.port)
 
     @staticmethod
     def _join_dict(dct: dict[any, any]):
@@ -171,6 +173,7 @@ class HTTPResponse:
         self._parse_response()
 
     def _parse_response(self):
+        print(self.response)
         response_header, response_body = self.response.split(INDENT + INDENT)
         self.body = response_body
 
@@ -207,13 +210,27 @@ class HTTPClient(BaseHTTPClient):
         self.max_redirect_count = max_redirect_count
         self._redirect_count = 0
 
-    def _connect_and_send_request(self, http_request: HTTPRequest):
-        with socket.socket() as sock_client:
-            sock_client.connect((http_request.hostname, http_request.port))
-            sock_client.send(http_request.request.encode())
+    def _connect_and_send_request_https(self, http_request: HTTPRequest):
+        context = ssl.create_default_context()
+        with socket.create_connection((http_request.hostname, http_request.port)) as sock:
+            with context.wrap_socket(sock, server_hostname=http_request.hostname) as ssl_sock:
+                ssl_sock.send(http_request.request.encode())
 
-            response = sock_client.recv(self.recv_bytes)
+                response = ssl_sock.recv(self.recv_bytes)
+                return response.decode()
+
+    def _connect_and_send_request_http(self, http_request: HTTPRequest):
+        with socket.create_connection((http_request.hostname, http_request.port)) as sock:
+            sock.send(http_request.request.encode())
+
+            response = sock.recv(self.recv_bytes)
             return response.decode()
+
+    def _connect_and_send_request(self, http_request: HTTPRequest):
+        if http_request.protocol == HTTPProtocols.HTTP:
+            return self._connect_and_send_request_http(http_request)
+        else:
+            return self._connect_and_send_request_https(http_request)
 
     def _get_response(self, http_request: HTTPRequest) -> HTTPResponse:
         response = self._connect_and_send_request(http_request)
