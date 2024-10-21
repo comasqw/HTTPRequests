@@ -98,21 +98,15 @@ class HTTPRequest:
 
     def _initialize_content_headers(self):
         if self.method in self._body_methods:
-            # Content-Type init
-            if self.form:
-                content_type = ContentTypes.FORM
-            elif isinstance(self.body, dict):
-                content_type = ContentTypes.JSON
-            else:
-                content_type = ContentTypes.TEXT
-
-            self._content_type = content_type
-
-            # Content-Length init
             if isinstance(self.body, dict):
                 self._content_length = len(json.dumps(self.body))
+                self._content_type = ContentTypes.JSON
             else:
                 self._content_length = len(str(self.body))
+                if self.form:
+                    self._content_type = ContentTypes.FORM
+                else:
+                    self._content_type = ContentTypes.TEXT
 
     def _initialize_form(self):
         if self.form:
@@ -122,7 +116,7 @@ class HTTPRequest:
         if not self.port:
             self.port = 80 if self.protocol == HTTPProtocols.HTTP else 443
         else:
-            self.port  = int(self.port)
+            self.port = int(self.port)
 
     @staticmethod
     def _join_dict(dct: dict[any, any]):
@@ -173,7 +167,6 @@ class HTTPResponse:
         self._parse_response()
 
     def _parse_response(self):
-        print(self.response)
         response_header, response_body = self.response.split(INDENT + INDENT)
         self.body = response_body
 
