@@ -11,27 +11,6 @@ class HTTPProtocols:
     HTTPS = "https://"
 
 
-def url_parse(url: str) -> tuple[str, str, str, int | None]:
-    http_protocol = HTTPProtocols.HTTP
-        
-    for protocol in (HTTPProtocols.HTTPS, HTTPProtocols.HTTP):
-        if url.startswith(protocol):
-            url = url[len(protocol):]
-            http_protocol = protocol
-            break
-
-    parsed_url = url.split("/")
-
-    hostname_with_port = parsed_url[0].split(":")
-    hostname = hostname_with_port[0]
-    port = hostname_with_port[-1] if len(hostname_with_port) >= 2 else None
-    if port:
-        port = int(port)
-
-    path = "/" + "/".join(parsed_url[1::]) if len(parsed_url) > 1 else "/"
-    return hostname, path, http_protocol, port
-
-
 class HTTPHeaders:
     USER_AGENT = "user-agent"
     ACCEPT = "accept"
@@ -39,6 +18,7 @@ class HTTPHeaders:
     HOST = "Host"
     CONTENT_LENGTH = "Content-Length"
     LOCATION = "Location"
+    COOKIE = "Cookie"
 
 
 class HTTPStatusCodes:
@@ -71,6 +51,31 @@ base_request_headers = {
 }
 
 
+def url_parse(url: str) -> tuple[str, str, str, int | None]:
+    http_protocol = HTTPProtocols.HTTP
+
+    for protocol in (HTTPProtocols.HTTPS, HTTPProtocols.HTTP):
+        if url.startswith(protocol):
+            url = url[len(protocol):]
+            http_protocol = protocol
+            break
+
+    parsed_url = url.split("/")
+
+    hostname_with_port = parsed_url[0].split(":")
+    hostname = hostname_with_port[0]
+    port = hostname_with_port[-1] if len(hostname_with_port) >= 2 else None
+    if port:
+        port = int(port)
+
+    path = "/" + "/".join(parsed_url[1::]) if len(parsed_url) > 1 else "/"
+    return hostname, path, http_protocol, port
+
+
+def join_dict(dct: dict[any, any], sep: str) -> str:
+    return sep.join([f"{key}={value}" for key, value in dct.items()])
+
+
 class HTTPRequest:
     _body_methods = (HTTPMethods.POST, HTTPMethods.PUT, HTTPMethods.DELETE)
 
@@ -82,7 +87,8 @@ class HTTPRequest:
                  http_version: str = HTTPVersions.HTTP1_1,
                  query_string: dict[str, str] | None = None,
                  body: str | dict | None = None,
-                 form: dict[str, str] | None = None):
+                 form: dict[str, str] | None = None,
+                 cookies: dict[str, str] | None = None):
 
         self.url = url
         self.hostname, self.path, self.protocol, self.port = url_parse(url)
@@ -93,6 +99,7 @@ class HTTPRequest:
         self.query_string = query_string
         self.body = body
         self.form = form
+        self.cookies = cookies
         self._content_type: str | None = None
         self._content_length: int | None = None
         self._initialize_form()
@@ -113,20 +120,20 @@ class HTTPRequest:
 
     def _initialize_form(self):
         if self.form:
-            self.body = self._join_dict(self.form)
+            self.body = join_dict(self.form, "&")
 
     def _initialize_port(self):
         if not self.port:
             self.port = 80 if self.protocol == HTTPProtocols.HTTP else 443
 
-    @staticmethod
-    def _join_dict(dct: dict[any, any]):
-        return "&".join([f"{key}={value}" for key, value in dct.items()])
+    def _initialize_cookies(self):
+        if self.cookies:
+            self.request_headers[HTTPHeaders.COOKIE] = join_dict(self.cookies, " ; ")
 
     def _create_request_start_line_str(self) -> str:
         path = self.path
         if self.query_string:
-            path += "?" + self._join_dict(self.query_string)
+            path += "?" + join_dict(self.query_string, "&")
         request_start_line = f"{self.method} {path} {self.http_version}{INDENT}"
         return request_start_line
 
