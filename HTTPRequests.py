@@ -25,6 +25,8 @@ def url_parse(url: str) -> tuple[str, str, str, int | None]:
     hostname_with_port = parsed_url[0].split(":")
     hostname = hostname_with_port[0]
     port = hostname_with_port[-1] if len(hostname_with_port) >= 2 else None
+    if port:
+        port = int(port)
 
     path = "/" + "/".join(parsed_url[1::]) if len(parsed_url) > 1 else "/"
     return hostname, path, http_protocol, port
@@ -116,8 +118,6 @@ class HTTPRequest:
     def _initialize_port(self):
         if not self.port:
             self.port = 80 if self.protocol == HTTPProtocols.HTTP else 443
-        else:
-            self.port = int(self.port)
 
     @staticmethod
     def _join_dict(dct: dict[any, any]):
