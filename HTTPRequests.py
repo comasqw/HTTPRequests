@@ -100,8 +100,9 @@ class HTTPRequest:
         self._http_version = http_version.upper()
         self._query_string = query_string if query_string else {}
         self._body = body
+        self._body_copy = body
         self._form = form
-        self._cookies = cookies
+        self._cookies = cookies if cookies else {}
         self._content_type: str | None = None
         self._content_length: int | None = None
         self._start_line_needs_update = True
@@ -165,9 +166,13 @@ class HTTPRequest:
     def request_headers(self):
         return self._request_headers
 
-    @request_headers.setter
-    def request_headers(self, new_headers: dict[str, str]):
-        self._request_headers.update(new_headers)
+    def new_header(self, key, value):
+        self._request_headers[key] = value
+        self._headers_need_update = True
+
+    def del_header(self, key):
+        if key in self._request_headers:
+            del self._request_headers[key]
         self._headers_need_update = True
 
     @property
@@ -185,7 +190,7 @@ class HTTPRequest:
 
     @query_string.setter
     def query_string(self, new_query_string: dict[str, str]):
-        self._query_string.update(new_query_string)
+        self._query_string = new_query_string
         self._start_line_needs_update = True
 
     @property
@@ -195,6 +200,7 @@ class HTTPRequest:
     @body.setter
     def body(self, new_body):
         self._body = new_body
+        self._body_copy = new_body
         self._headers_need_update = True
         self._body_needs_update = True
 
@@ -207,15 +213,20 @@ class HTTPRequest:
         self._form = new_form
         self._initialize_form()
         self._initialize_content_headers()
+        self._headers_need_update = True
         self._body_needs_update = True
 
     @property
     def cookies(self):
         return self._cookies
 
-    @cookies.setter
-    def cookies(self, new_cookies: dict[str, str]):
-        self._cookies.update(new_cookies)
+    def new_cookie(self, key, value):
+        self._cookies[key] = value
+        self._headers_need_update = True
+
+    def del_cookie(self, key):
+        if key in self._cookies:
+            del self._cookies[key]
         self._headers_need_update = True
 
     @property
@@ -231,22 +242,23 @@ class HTTPRequest:
 
     def _initialize_content_headers(self):
         if self._method in self._body_methods:
+            self._content_length = len(str(self.body))
+
             if isinstance(self.body, dict):
-                self._content_length = len(json.dumps(self.body))
                 self._content_type = ContentTypes.JSON
+            elif self._form:
+                self._content_type = ContentTypes.FORM
             else:
-                self._content_length = len(str(self.body))
-                if self._form:
-                    self._content_type = ContentTypes.FORM
-                else:
-                    self._content_type = ContentTypes.TEXT
+                self._content_type = ContentTypes.TEXT
 
     def _initialize_url(self):
         self._hostname, self._path, self._protocol, self._port = url_parse(self.url)
 
     def _initialize_form(self):
         if self._form:
-            self.body = join_dict(self._form, "&")
+            self._body = join_dict(self._form, "&")
+        else:
+            self._body = self._body_copy
 
     def _initialize_port(self):
         if not self._port:
