@@ -114,6 +114,7 @@ class HTTPRequest:
         self._initialize_url()
         self._initialize_port()
         self._initialize_form()
+        self._initialize_cookies()
         self._initialize_content_headers()
 
     @property
@@ -126,6 +127,18 @@ class HTTPRequest:
         self._initialize_url()
         self._start_line_needs_update = True
         self._headers_need_update = True
+
+    @property
+    def method(self):
+        return self._method
+
+    @method.setter
+    def method(self, new_method):
+        self._method = new_method.upper()
+        self._initialize_content_headers()
+        self._start_line_needs_update = True
+        self._headers_need_update = True
+        self._body_needs_update = True
 
     @property
     def hostname(self):
@@ -166,7 +179,7 @@ class HTTPRequest:
     def request_headers(self):
         return self._request_headers
 
-    def new_header(self, key, value):
+    def set_header(self, key, value):
         self._request_headers[key] = value
         self._headers_need_update = True
 
@@ -220,36 +233,28 @@ class HTTPRequest:
     def cookies(self):
         return self._cookies
 
-    def new_cookie(self, key, value):
+    def set_cookie(self, key, value):
         self._cookies[key] = value
-        self._headers_need_update = True
+        self._initialize_cookies()
 
     def del_cookie(self, key):
         if key in self._cookies:
             del self._cookies[key]
-        self._headers_need_update = True
-
-    @property
-    def request(self):
-        if self._start_line_needs_update:
-            self._create_request_start_line_str()
-        if self._headers_need_update:
-            self._create_request_headers_str()
-        if self._body_needs_update:
-            self._create_request_body_str()
-
-        return self._request_start_line + self._request_headers_str + DOUBLE_INDENT + self._body_str
+        self._initialize_cookies()
 
     def _initialize_content_headers(self):
         if self._method in self._body_methods:
-            self._content_length = len(str(self.body))
+            self._content_length = len(str(self._body))
 
-            if isinstance(self.body, dict):
+            if isinstance(self._body, dict):
                 self._content_type = ContentTypes.JSON
             elif self._form:
                 self._content_type = ContentTypes.FORM
             else:
                 self._content_type = ContentTypes.TEXT
+
+    def _initialize_cookies(self):
+        self.set_header(HTTPHeaders.COOKIE, join_dict(self._cookies, "; "))
 
     def _initialize_url(self):
         self._hostname, self._path, self._protocol, self._port = url_parse(self.url)
@@ -296,6 +301,17 @@ class HTTPRequest:
         else:
             self._body_str = ""
         self._body_needs_update = False
+
+    @property
+    def request(self):
+        if self._start_line_needs_update:
+            self._create_request_start_line_str()
+        if self._headers_need_update:
+            self._create_request_headers_str()
+        if self._body_needs_update:
+            self._create_request_body_str()
+
+        return self._request_start_line + self._request_headers_str + DOUBLE_INDENT + self._body_str
 
 
 class HTTPResponse:
