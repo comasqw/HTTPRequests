@@ -1,5 +1,4 @@
 import json
-
 from .validation import protocol_validation, method_validation, port_validation
 from .constants import *
 from .utils import url_parse, get_default_port, join_dict

@@ -1,4 +1,5 @@
 from .constants import *
+from .utils import parse_cookie
 
 
 class HTTPResponse:
@@ -8,7 +9,16 @@ class HTTPResponse:
         self.status_code: int | None = None
         self.headers = {}
         self.body: str | None = None
+        self.cookies = {}
+        self._cookies_str = []
         self._parse_response()
+        self._initialize_cookies()
+
+    def _initialize_cookies(self):
+        if self._cookies_str:
+            for cookie in self._cookies_str:
+                parsed_cookie = parse_cookie(cookie)
+                self.cookies[parsed_cookie["name"]] = parsed_cookie
 
     def _parse_response(self):
         splited_response = self.response.split(DOUBLE_INDENT)
@@ -27,8 +37,12 @@ class HTTPResponse:
         self.status_code = int(status_code)
 
         for line in response_header_lines[1:]:
-            header, *value = line.split(": ")
-            self.headers[header] = "".join(value)
+            header, value = line.split(": ", 1)
+            if header == HTTPHeaders.SET_COOKIE:
+                self._cookies_str.append("".join(value))
+                continue
+
+            self.headers[header] = value
 
     def __bool__(self):
         return self.status_code == HTTPStatusCodes.OK

@@ -18,6 +18,7 @@ class HTTPHeaders:
     CONTENT_LENGTH = "Content-Length"
     LOCATION = "Location"
     COOKIE = "Cookie"
+    SET_COOKIE = "Set-Cookie"
 
 
 class HTTPStatusCodes:
