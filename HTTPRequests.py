@@ -1,49 +1,8 @@
-import json
 import socket
+import json
 import ssl
-
-INDENT = "\r\n"
-DOUBLE_INDENT = INDENT + INDENT
-
-
-class HTTPProtocols:
-    HTTP = "http://"
-    HTTPS = "https://"
-
-
-class HTTPHeaders:
-    USER_AGENT = "user-agent"
-    ACCEPT = "accept"
-    CONTENT_TYPE = "Content-Type"
-    HOST = "Host"
-    CONTENT_LENGTH = "Content-Length"
-    LOCATION = "Location"
-    COOKIE = "Cookie"
-
-
-class HTTPStatusCodes:
-    OK = 200
-    MOVED_PERMANENTLY = 301
-
-
-class HTTPVersions:
-    HTTP1 = "HTTP/1"
-    HTTP1_1 = "HTTP/1.1"
-    HTTP2 = "HTTP/2"
-
-
-class HTTPMethods:
-    GET = "GET"
-    POST = "POST"
-    PUT = "PUT"
-    DELETE = "DELETE"
-
-
-class ContentTypes:
-    JSON = "application/json"
-    TEXT = "text/plain"
-    FORM = "application/x-www-form-urlencoded"
-
+from validation import protocol_validation, method_validation, port_validation
+from constants import *
 
 base_request_headers = {
     HTTPHeaders.USER_AGENT: "HTTPRequests, comasqw",
@@ -51,12 +10,18 @@ base_request_headers = {
 }
 
 
+def get_default_port(http_protocol: str):
+    protocol_validation(http_protocol)
+    return 80 if http_protocol == HTTPProtocols.HTTP else 443
+
+
 def url_parse(url: str) -> tuple[str, str, str, int | None]:
     http_protocol = HTTPProtocols.HTTP
 
-    for protocol in (HTTPProtocols.HTTPS, HTTPProtocols.HTTP):
-        if url.startswith(protocol):
-            url = url[len(protocol):]
+    for protocol in PROTOCOLS_TUPLE:
+        protocol_str = f"{protocol}://"
+        if url.startswith(protocol_str):
+            url = url[len(protocol_str):]
             http_protocol = protocol
             break
 
@@ -64,11 +29,16 @@ def url_parse(url: str) -> tuple[str, str, str, int | None]:
 
     hostname_with_port = parsed_url[0].split(":")
     hostname = hostname_with_port[0]
-    port = hostname_with_port[-1] if len(hostname_with_port) >= 2 else None
-    if port:
-        port = int(port)
 
-    path = "/" + "/".join(parsed_url[1::]) if len(parsed_url) > 1 else "/"
+    port = int(hostname_with_port[1]) if len(hostname_with_port) > 1 else None
+
+    if port is None:
+        port = get_default_port(http_protocol)
+    else:
+        port_validation(port)
+
+    path = "/" + "/".join(parsed_url[1:]) if len(parsed_url) > 1 else "/"
+
     return hostname, path, http_protocol, port
 
 
@@ -114,7 +84,6 @@ class HTTPRequest:
         self._initialize_url()
         self._initialize_port()
         self._initialize_form()
-        self._initialize_cookies()
         self._initialize_content_headers()
 
     @property
@@ -134,6 +103,8 @@ class HTTPRequest:
 
     @method.setter
     def method(self, new_method):
+        method_validation(new_method)
+
         self._method = new_method.upper()
         self._initialize_content_headers()
         self._start_line_needs_update = True
@@ -146,7 +117,7 @@ class HTTPRequest:
 
     @hostname.setter
     def hostname(self, new_hostname):
-        self._hostname = new_hostname
+        self._hostname = str(new_hostname)
         self._headers_need_update = True
 
     @property
@@ -164,6 +135,8 @@ class HTTPRequest:
 
     @protocol.setter
     def protocol(self, new_protocol):
+        protocol_validation(new_protocol)
+
         self._protocol = new_protocol
         self._initialize_port()
 
@@ -173,6 +146,7 @@ class HTTPRequest:
 
     @port.setter
     def port(self, new_port):
+        port_validation(new_port)
         self._port = new_port
 
     @property
@@ -203,6 +177,8 @@ class HTTPRequest:
 
     @query_string.setter
     def query_string(self, new_query_string: dict[str, str]):
+        if not isinstance(new_query_string, dict):
+            raise ValueError("New form must be dictionary")
         self._query_string = new_query_string
         self._start_line_needs_update = True
 
@@ -222,7 +198,10 @@ class HTTPRequest:
         return self._form
 
     @form.setter
-    def form(self, new_form):
+    def form(self, new_form: dict[str, str]):
+        if not isinstance(new_form, dict):
+            raise ValueError("New form must be dictionary")
+
         self._form = new_form
         self._initialize_form()
         self._initialize_content_headers()
@@ -267,7 +246,7 @@ class HTTPRequest:
 
     def _initialize_port(self):
         if not self._port:
-            self._port = 80 if self._protocol == HTTPProtocols.HTTP else 443
+            self._port = get_default_port(self._protocol)
 
     def _create_request_start_line_str(self):
         path = self._path
