@@ -1,49 +1,8 @@
-import socket
 import json
-import ssl
-from validation import protocol_validation, method_validation, port_validation
-from constants import *
 
-base_request_headers = {
-    HTTPHeaders.USER_AGENT: "HTTPRequests, comasqw",
-    HTTPHeaders.ACCEPT: "*/*"
-}
-
-
-def get_default_port(http_protocol: str):
-    protocol_validation(http_protocol)
-    return 80 if http_protocol == HTTPProtocols.HTTP else 443
-
-
-def url_parse(url: str) -> tuple[str, str, str, int | None]:
-    http_protocol = HTTPProtocols.HTTP
-
-    for protocol in PROTOCOLS_TUPLE:
-        protocol_str = f"{protocol}://"
-        if url.startswith(protocol_str):
-            url = url[len(protocol_str):]
-            http_protocol = protocol
-            break
-
-    parsed_url = url.split("/")
-
-    hostname_with_port = parsed_url[0].split(":")
-    hostname = hostname_with_port[0]
-
-    port = int(hostname_with_port[1]) if len(hostname_with_port) > 1 else None
-
-    if port is None:
-        port = get_default_port(http_protocol)
-    else:
-        port_validation(port)
-
-    path = "/" + "/".join(parsed_url[1:]) if len(parsed_url) > 1 else "/"
-
-    return hostname, path, http_protocol, port
-
-
-def join_dict(dct: dict[any, any], sep: str) -> str:
-    return sep.join([f"{key}={value}" for key, value in dct.items()])
+from .validation import protocol_validation, method_validation, port_validation
+from .constants import *
+from .utils import url_parse, get_default_port, join_dict
 
 
 class HTTPRequest:
@@ -66,7 +25,7 @@ class HTTPRequest:
         self._protocol: str | None = None
         self._port: int | None = None
         self._method = method.upper() if method else HTTPMethods.GET
-        self._request_headers = request_headers if request_headers else base_request_headers
+        self._request_headers = request_headers if request_headers else {}
         self._http_version = http_version.upper()
         self._query_string = query_string if query_string else {}
         self._body = body
@@ -291,102 +250,3 @@ class HTTPRequest:
             self._create_request_body_str()
 
         return self._request_start_line + self._request_headers_str + DOUBLE_INDENT + self._body_str
-
-
-class HTTPResponse:
-    def __init__(self, response: str):
-        self.response = response
-        self.http_version: str | None = None
-        self.status_code: int | None = None
-        self.headers = {}
-        self.body: str | None = None
-        self._parse_response()
-
-    def _parse_response(self):
-        splited_response = self.response.split(DOUBLE_INDENT)
-        response_header = splited_response[0]
-
-        response_body = None
-        if len(splited_response) >= 2:
-            response_body = splited_response[1]
-
-        self.body = response_body
-
-        response_header_lines = response_header.split(INDENT)
-        http_version, status_code, *_ = response_header_lines[0].split()
-
-        self.http_version = http_version
-        self.status_code = int(status_code)
-
-        for line in response_header_lines[1:]:
-            header, *value = line.split(": ")
-            self.headers[header] = "".join(value)
-
-    def __bool__(self):
-        return self.status_code == HTTPStatusCodes.OK
-
-
-class BaseHTTPClient:
-    @staticmethod
-    def _check_if_need_to_redirect(http_response: HTTPResponse):
-        location = None
-        if http_response.status_code == HTTPStatusCodes.MOVED_PERMANENTLY:
-            location = http_response.headers.get(HTTPHeaders.LOCATION)
-
-        return location
-
-    def request(self, http_request: HTTPRequest) -> HTTPResponse:
-        pass
-
-
-class HTTPClient(BaseHTTPClient):
-    def __init__(self, recv_bytes: int = 4096, max_redirect_count: int = 5):
-        self.recv_bytes = recv_bytes
-        self.max_redirect_count = max_redirect_count
-        self._redirect_count = 0
-
-    def _connect_and_send_request_https(self, http_request: HTTPRequest):
-        context = ssl.create_default_context()
-        with socket.create_connection((http_request.hostname, http_request.port)) as sock:
-            with context.wrap_socket(sock, server_hostname=http_request.hostname) as ssl_sock:
-                ssl_sock.send(http_request.request.encode())
-
-                response = ssl_sock.recv(self.recv_bytes)
-                return response.decode()
-
-    def _connect_and_send_request_http(self, http_request: HTTPRequest):
-        with socket.create_connection((http_request.hostname, http_request.port)) as sock:
-            sock.send(http_request.request.encode())
-
-            response = sock.recv(self.recv_bytes)
-            return response.decode()
-
-    def _connect_and_send_request(self, http_request: HTTPRequest):
-        if http_request.protocol == HTTPProtocols.HTTP:
-            return self._connect_and_send_request_http(http_request)
-        else:
-            return self._connect_and_send_request_https(http_request)
-
-    def _get_response(self, http_request: HTTPRequest) -> HTTPResponse:
-        response = self._connect_and_send_request(http_request)
-        http_response = HTTPResponse(response)
-        location = self._check_if_need_to_redirect(http_response)
-        if location:
-            if self._redirect_count >= self.max_redirect_count:
-                raise Exception("To many redirects")
-
-            redirect_request = HTTPRequest(location,
-                                           request_headers=http_request.request_headers,
-                                           body=http_request.body,
-                                           form=http_request.form,
-                                           query_string=http_request.query_string)
-            self._redirect_count += 1
-            return self.request(redirect_request)
-
-        return http_response
-
-    def request(self, http_request: HTTPRequest) -> HTTPResponse:
-
-        response = self._get_response(http_request)
-        self._redirect_count = 0
-        return response
