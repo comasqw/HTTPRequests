@@ -44,7 +44,7 @@ class HTTPResponse:
         response_headers = splited_response[0]
 
         response_body = None
-        if len(splited_response) >= 2:
+        if len(splited_response) > 1:
             response_body = splited_response[1]
 
         self.body = response_body
