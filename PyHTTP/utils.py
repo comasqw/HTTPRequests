@@ -52,3 +52,28 @@ def parse_cookie(cookie: str):
             cookie_dct[attr] = True
 
     return cookie_dct
+
+
+def parse_headers(headers: str) -> dict:
+    parsed_headers = {
+        "cookies_lst": [],
+        "headers": {}
+    }
+    response_header_lines = headers.split(INDENT)
+    http_version, status_code, *_ = response_header_lines[0].split()
+
+    parsed_headers["http_version"] = http_version
+    parsed_headers["status_code"] = int(status_code)
+
+    for line in response_header_lines[1:]:
+        header, value = line.split(": ", 1)
+        if header == HTTPHeaders.SET_COOKIE:
+            parsed_headers["cookies_lst"].append("".join(value))
+            continue
+
+        parsed_headers["headers"][header] = value
+
+    if parsed_headers["cookies_lst"]:
+        parsed_headers["headers"][HTTPHeaders.SET_COOKIE] = parsed_headers["cookies_lst"]
+
+    return parsed_headers

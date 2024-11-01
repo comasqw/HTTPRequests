@@ -38,7 +38,7 @@ class HTTPClient(BaseHTTPClient):
         http_response = HTTPResponse(hand_init=True)
 
         splited_response = first_recv_bytes.split(DOUBLE_INDENT)
-        http_response.parse_response_headers(splited_response[0])
+        http_response.initialize_headers(splited_response[0])
         if len(splited_response) > 1:
             response_body = splited_response[1]
         else:

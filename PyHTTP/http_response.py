@@ -1,5 +1,5 @@
 from .constants import *
-from .utils import parse_cookie
+from .utils import parse_cookie, parse_headers
 
 
 class HTTPResponse:
@@ -13,31 +13,24 @@ class HTTPResponse:
         self.headers = {}
         self.body: str | None = None
         self.cookies = {}
-        self._cookies_str = []
+        self._cookies_lst = []
         if response:
             self._parse_response()
             self.initialize_cookies()
 
     def initialize_cookies(self):
-        if self._cookies_str:
-            for cookie in self._cookies_str:
+        if self._cookies_lst:
+            for cookie in self._cookies_lst:
                 parsed_cookie = parse_cookie(cookie)
                 self.cookies[parsed_cookie["name"]] = parsed_cookie
 
-    def parse_response_headers(self, http_headers: str):
-        response_header_lines = http_headers.split(INDENT)
-        http_version, status_code, *_ = response_header_lines[0].split()
+    def initialize_headers(self, http_headers: str):
+        parsed_headers = parse_headers(http_headers)
 
-        self.http_version = http_version
-        self.status_code = int(status_code)
-
-        for line in response_header_lines[1:]:
-            header, value = line.split(": ", 1)
-            if header == HTTPHeaders.SET_COOKIE:
-                self._cookies_str.append("".join(value))
-                continue
-
-            self.headers[header] = value
+        self.http_version = parsed_headers["http_version"]
+        self.status_code = parsed_headers["status_code"]
+        self._cookies_lst = parsed_headers["cookies_lst"]
+        self.headers = parsed_headers["headers"]
 
     def _parse_response(self):
         splited_response = self.response.split(DOUBLE_INDENT)
@@ -48,7 +41,7 @@ class HTTPResponse:
             response_body = splited_response[1]
 
         self.body = response_body
-        self.parse_response_headers(response_headers)
+        self.initialize_headers(response_headers)
 
     def __bool__(self):
         return self.status_code == HTTPStatusCodes.OK
