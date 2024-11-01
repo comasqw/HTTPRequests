@@ -20,53 +20,81 @@ class BaseHTTPClient:
 
 
 class HTTPClient(BaseHTTPClient):
-    def __init__(self, recv_bytes: int = 4096, max_redirect_count: int = 5):
-        self.recv_bytes = recv_bytes
-        self.max_redirect_count = max_redirect_count
-        self._redirect_count = 0
+    def __init__(self, buff_size: int = 8192, redirect_allow: bool = True, max_redirects_count: int = 5):
+        self.buff_size = buff_size
+        self.redirect_allow = redirect_allow
+        self.max_redirects_count = max_redirects_count
 
-    def _connect_and_send_request_https(self, http_request: HTTPRequest):
-        context = ssl.create_default_context()
-        with socket.create_connection((http_request.hostname, http_request.port)) as sock:
-            with context.wrap_socket(sock, server_hostname=http_request.hostname) as ssl_sock:
-                ssl_sock.send(http_request.request.encode())
+    def _connect_send_request_and_get_response(self, sock: socket.socket | ssl.SSLSocket, http_request: HTTPRequest)\
+            -> HTTPResponse:
+        # todo: add Transfer-Encoding: chunked supporting
+        sock.sendall(http_request.request.encode())
 
-                response = ssl_sock.recv(self.recv_bytes)
-                return response.decode()
+        first_recv_bytes = sock.recv(self.buff_size).decode()
+        if not first_recv_bytes:
+            sock.close()
+            raise Exception("Empty Response")
 
-    def _connect_and_send_request_http(self, http_request: HTTPRequest):
-        with socket.create_connection((http_request.hostname, http_request.port)) as sock:
-            sock.send(http_request.request.encode())
+        http_response = HTTPResponse(hand_init=True)
 
-            response = sock.recv(self.recv_bytes)
-            return response.decode()
-
-    def _connect_and_send_request(self, http_request: HTTPRequest):
-        if http_request.protocol == HTTPProtocols.HTTP:
-            return self._connect_and_send_request_http(http_request)
+        splited_response = first_recv_bytes.split(DOUBLE_INDENT)
+        http_response.parse_response_headers(splited_response[0])
+        if len(splited_response) > 1:
+            response_body = splited_response[1]
         else:
-            return self._connect_and_send_request_https(http_request)
+            http_response.response = first_recv_bytes
+            return http_response
 
-    def _get_response(self, http_request: HTTPRequest) -> HTTPResponse:
-        response = self._connect_and_send_request(http_request)
-        http_response = HTTPResponse(response)
-        location = self._check_if_need_to_redirect(http_response)
-        if location:
-            if self._redirect_count >= self.max_redirect_count:
-                raise Exception("To many redirects")
+        content_length = http_response.headers.get(HTTPHeaders.CONTENT_LENGTH)
+        if content_length:
+            content_length = int(content_length)
+            if len(response_body.encode()) == content_length:
+                http_response.body = response_body
+                http_response.response = first_recv_bytes
+                return http_response
 
-            redirect_request = HTTPRequest(location,
-                                           request_headers=http_request.request_headers,
-                                           body=http_request.body,
-                                           form=http_request.form,
-                                           query_string=http_request.query_string)
-            self._redirect_count += 1
-            return self.request(redirect_request)
+            while len(response_body.encode()) != content_length:
+                recv_response = sock.recv(self.buff_size)
+                if not recv_response:
+                    break
+                response_body += recv_response.decode()
 
+        http_response.body = response_body
+        http_response.response = splited_response[0] + DOUBLE_INDENT + response_body
+
+        http_response.initialize_cookies()
         return http_response
 
-    def request(self, http_request: HTTPRequest) -> HTTPResponse:
+    def _get_response(self, http_request: HTTPRequest) -> HTTPResponse:
+        with socket.create_connection((http_request.hostname, http_request.port)) as sock:
+            if http_request.protocol == HTTPProtocols.HTTP:
+                return self._connect_send_request_and_get_response(sock, http_request)
+            else:
+                context = ssl.create_default_context()
+                with context.wrap_socket(sock, server_hostname=http_request.hostname) as ssl_sock:
+                    return self._connect_send_request_and_get_response(ssl_sock, http_request)
 
-        response = self._get_response(http_request)
-        self._redirect_count = 0
+    def request(self, http_request: HTTPRequest) -> HTTPResponse:
+        redirects_count = 0
+
+        request = http_request
+
+        while True:
+            response = self._get_response(request)
+
+            if self.redirect_allow:
+                location = self._check_if_need_to_redirect(response)
+                if location:
+                    if redirects_count >= self.max_redirects_count:
+                        raise Exception("To many redirects")
+
+                    request = HTTPRequest(location,
+                                          request_headers=http_request.request_headers,
+                                          body=http_request.body,
+                                          form=http_request.form,
+                                          query_string=http_request.query_string)
+                    redirects_count += 1
+                    continue
+            break
+
         return response

@@ -181,7 +181,7 @@ class HTTPRequest:
 
     def _initialize_content_headers(self):
         if self._method in self._body_methods:
-            self._content_length = len(str(self._body))
+            self._content_length = len(str(self._body).encode("utf-8"))
 
             if isinstance(self._body, dict):
                 self._content_type = ContentTypes.JSON
