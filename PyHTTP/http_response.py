@@ -13,14 +13,14 @@ class HTTPResponse:
         self.headers = {}
         self.body: str | None = None
         self.cookies = {}
-        self._cookies_lst = []
         if response:
             self._parse_response()
             self.initialize_cookies()
 
     def initialize_cookies(self):
-        if self._cookies_lst:
-            for cookie in self._cookies_lst:
+        cookies_lst = self.headers.get(HTTPHeaders.SET_COOKIE)
+        if cookies_lst:
+            for cookie in cookies_lst:
                 parsed_cookie = parse_cookie(cookie)
                 self.cookies[parsed_cookie["name"]] = parsed_cookie
 
@@ -29,7 +29,6 @@ class HTTPResponse:
 
         self.http_version = parsed_headers["http_version"]
         self.status_code = parsed_headers["status_code"]
-        self._cookies_lst = parsed_headers["cookies_lst"]
         self.headers = parsed_headers["headers"]
 
     def _parse_response(self):
