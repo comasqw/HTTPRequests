@@ -19,6 +19,7 @@ class HTTPHeaders:
     LOCATION = "Location"
     COOKIE = "Cookie"
     SET_COOKIE = "Set-Cookie"
+    TRANSFER_ENCODING = "Transfer-Encoding"
 
 
 class HTTPStatusCodes:
@@ -46,3 +47,7 @@ class ContentTypes:
     JSON = "application/json"
     TEXT = "text/plain"
     FORM = "application/x-www-form-urlencoded"
+
+
+class TransferEncodingValues:
+    CHUNKED = "chunked"
