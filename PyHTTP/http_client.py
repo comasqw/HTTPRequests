@@ -20,8 +20,8 @@ class BaseHTTPClient:
 
 
 class HTTPClient(BaseHTTPClient):
-    def __init__(self, buff_size: int = 8192, redirect_allow: bool = True, max_redirects_count: int = 5):
-        self.buff_size = buff_size
+    def __init__(self, redirect_allow: bool = True, max_redirects_count: int = 5):
+        self._buff_size = 8192
         self.redirect_allow = redirect_allow
         self.max_redirects_count = max_redirects_count
 
