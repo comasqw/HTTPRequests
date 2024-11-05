@@ -24,6 +24,8 @@ class HTTPClient(BaseHTTPClient):
         self._buff_size = 8192
         self.redirect_allow = redirect_allow
         self.max_redirects_count = max_redirects_count
+        self.sessions_cookies = {}
+        self._session_on = False
 
     @staticmethod
     def _get_all_data_from_buffer_with_length(sock: socket.socket | ssl.SSLSocket, data: str, length: int)\
@@ -127,6 +129,39 @@ class HTTPClient(BaseHTTPClient):
                 context = ssl.create_default_context()
                 with context.wrap_socket(sock, server_hostname=http_request.hostname) as ssl_sock:
                     return self._connect_send_request_and_get_response(ssl_sock, http_request)
+
+    #todo: Complete sessions supporting
+    def open_session(self):
+        self._session_on = True
+
+    def close_session(self):
+        self._session_on = False
+
+    def _check_that_hostname_is_being_in_sessions_cookies(self, hostname: str) -> bool:
+        if self._session_on:
+            if hostname not in self.sessions_cookies:
+                return True
+        return False
+
+    def _add_hostname_to_sessions_cookies(self, hostname: str):
+        if not self._check_that_hostname_is_being_in_sessions_cookies(hostname):
+            self.sessions_cookies[hostname] = {}
+
+    def del_hostname_from_sessions_cookies(self, hostname: str):
+        if self._check_that_hostname_is_being_in_sessions_cookies(hostname):
+            del self.sessions_cookies[hostname]
+
+    def _add_cookies_to_sessions_cookies(self, hostname: str, cookies: dict):
+        if self._check_that_hostname_is_being_in_sessions_cookies(hostname):
+            self.sessions_cookies[hostname].update(cookies)
+
+    def _add_cookies_to_http_request(self, http_request: HTTPRequest):
+        if self._check_that_hostname_is_being_in_sessions_cookies(http_request.hostname):
+            hostname_cookies: dict = self.sessions_cookies[http_request.hostname]
+            for cookie_settings in hostname_cookies.items():
+                cookie_settings: dict
+                cookie_name, cookie_value = cookie_settings["name"], cookie_settings["value"]
+                http_request.set_cookie(cookie_name, cookie_value)
 
     def request(self, http_request: HTTPRequest) -> HTTPResponse:
         redirects_count = 0
