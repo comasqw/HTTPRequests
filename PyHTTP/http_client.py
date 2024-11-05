@@ -91,13 +91,13 @@ class HTTPClient(BaseHTTPClient):
             -> HTTPResponse:
         sock.sendall(http_request.request.encode())
 
-        first_recv_data = sock.recv(self.buff_size).decode()
+        first_recv_data = sock.recv(self._buff_size).decode()
         if not first_recv_data:
             sock.close()
             raise Exception("Empty Response")
 
         while DOUBLE_INDENT not in first_recv_data:
-            first_recv_data += sock.recv(self.buff_size).decode()
+            first_recv_data += sock.recv(self._buff_size).decode()
 
         http_response = HTTPResponse(hand_init=True)
 
