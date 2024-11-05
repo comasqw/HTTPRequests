@@ -25,22 +25,13 @@ class HTTPClient(BaseHTTPClient):
         self.redirect_allow = redirect_allow
         self.max_redirects_count = max_redirects_count
 
-    def _get_response_body_with_content_length(self, sock: socket.socket | ssl.SSLSocket, response_body: str,
-                                               content_length: int) -> str:
-        while len(response_body.encode()) != content_length:
-            recv_response = sock.recv(self.buff_size)
-            if not recv_response:
-                break
-            response_body += recv_response.decode()
-
-        return response_body
-
     @staticmethod
-    def _get_all_chunk_data_from_buffer(sock: socket.socket | ssl.SSLSocket, chunk_data: str, chunk_size: int) -> str:
-        while len(chunk_data.encode()) != chunk_size:
-            chunk_data += sock.recv(chunk_size - len(chunk_data.encode())).decode()
+    def _get_all_data_from_buffer_with_length(sock: socket.socket | ssl.SSLSocket, data: str, length: int)\
+            -> str:
+        while len(data.encode()) != length:
+            data += sock.recv(length - len(data.encode())).decode()
 
-        return chunk_data
+        return data
 
     def _get_response_body_with_chunked(self, sock: socket.socket | ssl.SSLSocket, chunk_data: str) -> str:
         response_body = chunk_data
@@ -53,7 +44,7 @@ class HTTPClient(BaseHTTPClient):
             if chunk_size == 0:
                 break
 
-            chunk_data = self._get_all_chunk_data_from_buffer(sock, "", chunk_size)
+            chunk_data = self._get_all_data_from_buffer_with_length(sock, "", chunk_size)
 
             response_body += chunk_data
             sock.recv(2)
@@ -82,7 +73,7 @@ class HTTPClient(BaseHTTPClient):
             if isinstance(check_if_data_eq_to_length_result, HTTPResponse):
                 return check_if_data_eq_to_length_result
 
-            return self._get_response_body_with_content_length(sock, response_body, content_length)
+            return self._get_all_data_from_buffer_with_length(sock, response_body, content_length)
         elif transfer_encoding_value and transfer_encoding_value == TransferEncodingValues.CHUNKED:
             chunk_size, chunk_data = response_body.split(INDENT)
             chunk_size = int(chunk_size, 16)
@@ -91,7 +82,7 @@ class HTTPClient(BaseHTTPClient):
             if isinstance(check_if_data_eq_to_length_result, HTTPResponse):
                 return check_if_data_eq_to_length_result
 
-            chunk_data = self._get_all_chunk_data_from_buffer(sock, chunk_data, chunk_size)
+            chunk_data = self._get_all_data_from_buffer_with_length(sock, chunk_data, chunk_size)
             sock.recv(2)
 
             return self._get_response_body_with_chunked(sock, chunk_data)
@@ -105,12 +96,15 @@ class HTTPClient(BaseHTTPClient):
             sock.close()
             raise Exception("Empty Response")
 
+        while DOUBLE_INDENT not in first_recv_data:
+            first_recv_data += sock.recv(self.buff_size).decode()
+
         http_response = HTTPResponse(hand_init=True)
 
-        splited_response = first_recv_data.split(DOUBLE_INDENT)
-        http_response.initialize_headers(splited_response[0])
-        if len(splited_response) > 1:
-            response_body = splited_response[1]
+        split_response = first_recv_data.split(DOUBLE_INDENT)
+        http_response.initialize_headers(split_response[0])
+        if len(split_response) > 1:
+            response_body = split_response[1]
         else:
             http_response.response = first_recv_data
             return http_response
@@ -120,7 +114,7 @@ class HTTPClient(BaseHTTPClient):
             return get_response_body_result
 
         http_response.body = get_response_body_result
-        http_response.response = splited_response[0] + DOUBLE_INDENT + get_response_body_result
+        http_response.response = split_response[0] + DOUBLE_INDENT + get_response_body_result
 
         http_response.initialize_cookies()
         return http_response

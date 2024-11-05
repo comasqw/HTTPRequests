@@ -32,12 +32,12 @@ class HTTPResponse:
         self.headers = parsed_headers["headers"]
 
     def _parse_response(self):
-        splited_response = self.response.split(DOUBLE_INDENT)
-        response_headers = splited_response[0]
+        split_response = self.response.split(DOUBLE_INDENT)
+        response_headers = split_response[0]
 
         response_body = None
-        if len(splited_response) > 1:
-            response_body = splited_response[1]
+        if len(split_response) > 1:
+            response_body = split_response[1]
 
         self.body = response_body
         self.initialize_headers(response_headers)
