@@ -12,7 +12,7 @@ BUFF_SIZE = 8192
 
 class SessionManager:
     def __init__(self):
-        self.sessions_cookies = {}
+        self.sessions_cookies: [str, ResponseCookie] = {}
 
     def add_hostname_to_sessions_cookies(self, hostname: str):
         if hostname not in self.sessions_cookies:
@@ -22,7 +22,7 @@ class SessionManager:
         if hostname in self.sessions_cookies:
             del self.sessions_cookies[hostname]
 
-    def add_cookies_to_sessions_cookies(self, hostname: str, cookies: dict):
+    def add_cookies_to_sessions_cookies(self, hostname: str, cookies: dict[str, ResponseCookie]):
         if hostname in self.sessions_cookies:
             self.sessions_cookies[hostname].update(cookies)
 
@@ -48,9 +48,8 @@ class SessionManager:
 
     def add_cookies_to_http_request(self, http_request: HTTPRequest):
         if http_request.hostname in self.sessions_cookies:
-            hostname_cookies: dict = self.sessions_cookies[http_request.hostname]
+            hostname_cookies = self.sessions_cookies[http_request.hostname]
             for cookie_obj in hostname_cookies.values():
-                cookie_obj: ResponseCookie
                 if self._check_cookie_settings(http_request, cookie_obj):
                     http_request.set_cookie(cookie_obj.name, cookie_obj.value)
 
