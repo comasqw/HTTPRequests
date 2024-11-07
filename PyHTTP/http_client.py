@@ -7,6 +7,54 @@ from .http_request import HTTPRequest
 from .http_response import HTTPResponse, ResponseCookie
 
 
+BUFF_SIZE = 8192
+
+
+class SessionManager:
+    def __init__(self):
+        self.sessions_cookies = {}
+
+    def add_hostname_to_sessions_cookies(self, hostname: str):
+        if hostname not in self.sessions_cookies:
+            self.sessions_cookies[hostname] = {}
+
+    def del_hostname_from_sessions_cookies(self, hostname: str):
+        if hostname in self.sessions_cookies:
+            del self.sessions_cookies[hostname]
+
+    def add_cookies_to_sessions_cookies(self, hostname: str, cookies: dict):
+        if hostname in self.sessions_cookies:
+            self.sessions_cookies[hostname].update(cookies)
+
+    @staticmethod
+    def _check_cookie_settings(http_request: HTTPRequest, cookie: ResponseCookie) -> bool:
+        if cookie.expires:
+            formatted_expires = datetime.strptime(cookie.expires, "%a, %d %b %Y %H:%M:%S %Z")
+            if cookie.set_time >= formatted_expires:
+                return False
+        elif cookie.max_age:
+            expiration_date = cookie.set_time + timedelta(seconds=cookie.max_age)
+            expiration_date = expiration_date.strftime("%Y-%m-%d %H:%M:%S")
+            if cookie.set_time >= expiration_date:
+                return False
+
+        if cookie.secure and http_request.protocol != HTTPProtocols.HTTPS:
+            return False
+
+        if cookie.path and not http_request.path.startswith(cookie.path):
+            return False
+
+        return True
+
+    def add_cookies_to_http_request(self, http_request: HTTPRequest):
+        if http_request.hostname in self.sessions_cookies:
+            hostname_cookies: dict = self.sessions_cookies[http_request.hostname]
+            for cookie_obj in hostname_cookies.values():
+                cookie_obj: ResponseCookie
+                if self._check_cookie_settings(http_request, cookie_obj):
+                    http_request.set_cookie(cookie_obj.name, cookie_obj.value)
+
+
 class BaseHTTPClient:
     @staticmethod
     def _check_if_need_to_redirect(http_response: HTTPResponse):
@@ -22,10 +70,9 @@ class BaseHTTPClient:
 
 class HTTPClient(BaseHTTPClient):
     def __init__(self, redirect_allow: bool = True, max_redirects_count: int = 5):
-        self._buff_size = 8192
         self.redirect_allow = redirect_allow
         self.max_redirects_count = max_redirects_count
-        self.sessions_cookies = {}
+        self.session_manager = SessionManager()
         self._session_on = False
 
     @staticmethod
@@ -94,13 +141,13 @@ class HTTPClient(BaseHTTPClient):
             -> HTTPResponse:
         sock.sendall(http_request.request.encode())
 
-        first_recv_data = sock.recv(self._buff_size).decode()
+        first_recv_data = sock.recv(BUFF_SIZE).decode()
         if not first_recv_data:
             sock.close()
             raise Exception("Empty Response")
 
         while DOUBLE_INDENT not in first_recv_data:
-            first_recv_data += sock.recv(self._buff_size).decode()
+            first_recv_data += sock.recv(BUFF_SIZE).decode()
 
         http_response = HTTPResponse(hand_init=True)
 
@@ -137,52 +184,6 @@ class HTTPClient(BaseHTTPClient):
     def close_session(self):
         self._session_on = False
 
-    def _check_that_hostname_is_being_in_sessions_cookies(self, hostname: str) -> bool:
-        if self._session_on:
-            if hostname in self.sessions_cookies:
-                return True
-        return False
-
-    def _add_hostname_to_sessions_cookies(self, hostname: str):
-        if not self._check_that_hostname_is_being_in_sessions_cookies(hostname):
-            self.sessions_cookies[hostname] = {}
-
-    def del_hostname_from_sessions_cookies(self, hostname: str):
-        if self._check_that_hostname_is_being_in_sessions_cookies(hostname):
-            del self.sessions_cookies[hostname]
-
-    def _add_cookies_to_sessions_cookies(self, hostname: str, cookies: dict):
-        if self._check_that_hostname_is_being_in_sessions_cookies(hostname):
-            self.sessions_cookies[hostname].update(cookies)
-
-    @staticmethod
-    def _check_cookie_settings(http_request: HTTPRequest, cookie: ResponseCookie) -> bool:
-        if cookie.expires:
-            formatted_expires = datetime.strptime(cookie.expires, "%a, %d %b %Y %H:%M:%S %Z")
-            if cookie.set_time >= formatted_expires:
-                return False
-        elif cookie.max_age:
-            expiration_date = cookie.set_time + timedelta(seconds=cookie.max_age)
-            expiration_date = expiration_date.strftime("%Y-%m-%d %H:%M:%S")
-            if cookie.set_time >= expiration_date:
-                return False
-
-        if cookie.secure and http_request.protocol != HTTPProtocols.HTTPS:
-            return False
-
-        if cookie.path and not http_request.path.startswith(cookie.path):
-            return False
-
-        return True
-
-    def _add_cookies_to_http_request(self, http_request: HTTPRequest):
-        if self._check_that_hostname_is_being_in_sessions_cookies(http_request.hostname):
-            hostname_cookies: dict = self.sessions_cookies[http_request.hostname]
-            for cookie_obj in hostname_cookies.values():
-                cookie_obj: ResponseCookie
-                if self._check_cookie_settings(http_request, cookie_obj):
-                    http_request.set_cookie(cookie_obj.name, cookie_obj.value)
-
     def request(self, http_request: HTTPRequest) -> HTTPResponse:
         redirects_count = 0
 
@@ -190,14 +191,14 @@ class HTTPClient(BaseHTTPClient):
 
         while True:
             if self._session_on:
-                self._add_cookies_to_http_request(request)
+                self.session_manager.add_cookies_to_http_request(request)
 
             response = self._get_response(request)
 
             if self._session_on:
-                self._add_hostname_to_sessions_cookies(request.hostname)
+                self.session_manager.add_hostname_to_sessions_cookies(request.hostname)
                 if response.cookies:
-                    self._add_cookies_to_sessions_cookies(request.hostname, response.cookies)
+                    self.session_manager.add_cookies_to_sessions_cookies(request.hostname, response.cookies)
 
             if self.redirect_allow:
                 location = self._check_if_need_to_redirect(response)
