@@ -51,3 +51,12 @@ class ContentTypes:
 
 class TransferEncodingValues:
     CHUNKED = "chunked"
+
+
+class CookieSettings:
+    SECURE = "Secure"
+    MAX_AGE = "Max-Age"
+    EXPIRES = "Expires"
+    DOMAIN = "Domain"
+    PATH = "path"
+    SAME_SITE = "SameSite"

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from .constants import *
 from .validation import protocol_validation, port_validation
 
@@ -37,7 +39,7 @@ def join_dict(dct: dict[any, any], sep: str) -> str:
     return sep.join([f"{key}={value}" for key, value in dct.items()])
 
 
-def parse_cookie(cookie: str):
+def parse_cookie(cookie: str) -> dict:
     cookie_dct = {}
     cookie_attrs = cookie.split("; ")
     cookie_name, cookie_value = cookie_attrs[0].split("=", 1)
@@ -48,6 +50,8 @@ def parse_cookie(cookie: str):
         if "=" in attr:
             attr_name, attr_value = attr.split("=", 1)
             cookie_dct[attr_name] = attr_value
+            if attr_name in (CookieSettings.EXPIRES, CookieSettings.MAX_AGE):
+                cookie_dct["set_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         else:
             cookie_dct[attr] = True
 

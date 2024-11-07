@@ -2,6 +2,23 @@ from .constants import *
 from .utils import parse_cookie, parse_headers
 
 
+class ResponseCookie:
+    def __init__(self, cookie_str: str):
+        self.cookie_dict = parse_cookie(cookie_str)
+        self.name = self.cookie_dict["name"]
+        self.value = self.cookie_dict["value"]
+        self.set_time = self.cookie_dict.get("set_time")
+        self.expires = self.cookie_dict.get(CookieSettings.EXPIRES)
+        self.max_age = self.cookie_dict.get(CookieSettings.MAX_AGE)
+        self.path = self.cookie_dict.get(CookieSettings.PATH)
+        self.secure = self.cookie_dict.get(CookieSettings.SECURE)
+        self.domain = self.cookie_dict.get(CookieSettings.DOMAIN)
+        self.same_site = self.cookie_dict.get(CookieSettings.SAME_SITE)
+
+    def __str__(self):
+        return str(self.cookie_dict)
+
+
 class HTTPResponse:
     def __init__(self, response: str | None = None, hand_init: bool = False):
         if not hand_init and not response:
@@ -21,8 +38,8 @@ class HTTPResponse:
         cookies_lst = self.headers.get(HTTPHeaders.SET_COOKIE)
         if cookies_lst:
             for cookie in cookies_lst:
-                parsed_cookie = parse_cookie(cookie)
-                self.cookies[parsed_cookie["name"]] = parsed_cookie
+                cookie_obj = ResponseCookie(cookie)
+                self.cookies[cookie_obj.name] = cookie_obj
 
     def initialize_headers(self, http_headers: str):
         parsed_headers = parse_headers(http_headers)

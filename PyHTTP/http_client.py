@@ -1,9 +1,10 @@
 import socket
 import ssl
+from datetime import datetime, timedelta
 
 from .constants import *
 from .http_request import HTTPRequest
-from .http_response import HTTPResponse
+from .http_response import HTTPResponse, ResponseCookie
 
 
 class BaseHTTPClient:
@@ -130,7 +131,6 @@ class HTTPClient(BaseHTTPClient):
                 with context.wrap_socket(sock, server_hostname=http_request.hostname) as ssl_sock:
                     return self._connect_send_request_and_get_response(ssl_sock, http_request)
 
-    #todo: Complete sessions supporting
     def open_session(self):
         self._session_on = True
 
@@ -139,7 +139,7 @@ class HTTPClient(BaseHTTPClient):
 
     def _check_that_hostname_is_being_in_sessions_cookies(self, hostname: str) -> bool:
         if self._session_on:
-            if hostname not in self.sessions_cookies:
+            if hostname in self.sessions_cookies:
                 return True
         return False
 
@@ -155,13 +155,33 @@ class HTTPClient(BaseHTTPClient):
         if self._check_that_hostname_is_being_in_sessions_cookies(hostname):
             self.sessions_cookies[hostname].update(cookies)
 
+    @staticmethod
+    def _check_cookie_settings(http_request: HTTPRequest, cookie: ResponseCookie) -> bool:
+        if cookie.expires:
+            formatted_expires = datetime.strptime(cookie.expires, "%a, %d %b %Y %H:%M:%S %Z")
+            if cookie.set_time >= formatted_expires:
+                return False
+        elif cookie.max_age:
+            expiration_date = cookie.set_time + timedelta(seconds=cookie.max_age)
+            expiration_date = expiration_date.strftime("%Y-%m-%d %H:%M:%S")
+            if cookie.set_time >= expiration_date:
+                return False
+
+        if cookie.secure and http_request.protocol != HTTPProtocols.HTTPS:
+            return False
+
+        if cookie.path and not http_request.path.startswith(cookie.path):
+            return False
+
+        return True
+
     def _add_cookies_to_http_request(self, http_request: HTTPRequest):
         if self._check_that_hostname_is_being_in_sessions_cookies(http_request.hostname):
             hostname_cookies: dict = self.sessions_cookies[http_request.hostname]
-            for cookie_settings in hostname_cookies.items():
-                cookie_settings: dict
-                cookie_name, cookie_value = cookie_settings["name"], cookie_settings["value"]
-                http_request.set_cookie(cookie_name, cookie_value)
+            for cookie_obj in hostname_cookies.values():
+                cookie_obj: ResponseCookie
+                if self._check_cookie_settings(http_request, cookie_obj):
+                    http_request.set_cookie(cookie_obj.name, cookie_obj.value)
 
     def request(self, http_request: HTTPRequest) -> HTTPResponse:
         redirects_count = 0
@@ -169,7 +189,15 @@ class HTTPClient(BaseHTTPClient):
         request = http_request
 
         while True:
+            if self._session_on:
+                self._add_cookies_to_http_request(request)
+
             response = self._get_response(request)
+
+            if self._session_on:
+                self._add_hostname_to_sessions_cookies(request.hostname)
+                if response.cookies:
+                    self._add_cookies_to_sessions_cookies(request.hostname, response.cookies)
 
             if self.redirect_allow:
                 location = self._check_if_need_to_redirect(response)
