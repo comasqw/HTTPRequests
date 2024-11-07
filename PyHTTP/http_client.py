@@ -1,6 +1,7 @@
 import socket
 import ssl
 from datetime import datetime, timedelta
+from abc import ABC, abstractmethod
 
 from .constants import *
 from .http_request import HTTPRequest
@@ -54,15 +55,38 @@ class SessionManager:
                     http_request.set_cookie(cookie_obj.name, cookie_obj.value)
 
 
-class BaseHTTPClient:
+class RedirectManager:
+    def __init__(self, max_redirects_count: int):
+        self._redirects_count = 0
+        self.max_redirects_count = max_redirects_count
+
     @staticmethod
-    def _check_if_need_to_redirect(http_response: HTTPResponse):
+    def _need_redirect(http_response: HTTPResponse):
         location = None
         if http_response.status_code == HTTPStatusCodes.MOVED_PERMANENTLY:
             location = http_response.headers.get(HTTPHeaders.LOCATION)
 
         return location
 
+    def create_redirect_request(self, http_response: HTTPResponse, http_request: HTTPRequest) -> HTTPRequest | bool:
+        location = self._need_redirect(http_response)
+        if location:
+            if self._redirects_count >= self.max_redirects_count:
+                raise Exception("To many redirects")
+
+            request = HTTPRequest(location,
+                                  request_headers=http_request.request_headers,
+                                  body=http_request.body,
+                                  form=http_request.form,
+                                  query_string=http_request.query_string)
+            self._redirects_count += 1
+            return request
+        return False
+
+
+class BaseHTTPClient(ABC):
+
+    @abstractmethod
     def request(self, http_request: HTTPRequest) -> HTTPResponse:
         pass
 
@@ -184,7 +208,7 @@ class HTTPClient(BaseHTTPClient):
         self._session_on = False
 
     def request(self, http_request: HTTPRequest) -> HTTPResponse:
-        redirects_count = 0
+        redirect_manager = RedirectManager(self.max_redirects_count)
 
         request = http_request
 
@@ -200,18 +224,12 @@ class HTTPClient(BaseHTTPClient):
                     self.session_manager.add_cookies_to_sessions_cookies(request.hostname, response.cookies)
 
             if self.redirect_allow:
-                location = self._check_if_need_to_redirect(response)
-                if location:
-                    if redirects_count >= self.max_redirects_count:
-                        raise Exception("To many redirects")
+                request_creating_result = redirect_manager.create_redirect_request(response, http_request)
+                if not request_creating_result:
+                    break
 
-                    request = HTTPRequest(location,
-                                          request_headers=http_request.request_headers,
-                                          body=http_request.body,
-                                          form=http_request.form,
-                                          query_string=http_request.query_string)
-                    redirects_count += 1
-                    continue
+                request = request_creating_result
+                continue
             break
 
         return response
