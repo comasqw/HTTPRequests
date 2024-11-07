@@ -58,5 +58,5 @@ class CookieSettings:
     MAX_AGE = "Max-Age"
     EXPIRES = "Expires"
     DOMAIN = "Domain"
-    PATH = "path"
+    PATH = "Path"
     SAME_SITE = "SameSite"
