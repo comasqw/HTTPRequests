@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, main
 from datetime import datetime
 
 from PyHTTP.utils import *
@@ -35,3 +35,7 @@ class ParseCookieTest(TestCase):
                                   'name': 'Set-Cookie: sessionId',
                                   'set_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                   'value': 'abc123'})
+
+
+if __name__ == '__main__':
+    main()
