@@ -9,7 +9,7 @@ def get_default_port(http_protocol: str):
     return 80 if http_protocol == HTTPProtocols.HTTP else 443
 
 
-def url_parse(url: str) -> tuple[str, str, str, int | None]:
+def url_parse(url: str) -> tuple[str, str, str, int]:
     http_protocol = HTTPProtocols.HTTP
 
     for protocol in PROTOCOLS_TUPLE:
@@ -49,6 +49,9 @@ def parse_cookie(cookie: str) -> dict:
     for attr in cookie_attrs[1:]:
         if "=" in attr:
             attr_name, attr_value = attr.split("=", 1)
+            if attr_name == CookieSettings.MAX_AGE:
+                attr_value = int(attr_value)
+
             cookie_dct[attr_name] = attr_value
             if attr_name in (CookieSettings.EXPIRES, CookieSettings.MAX_AGE):
                 cookie_dct["set_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
